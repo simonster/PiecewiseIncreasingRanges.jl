@@ -1,7 +1,7 @@
 # PiecewiseIncreasingRanges
 
 [![Build Status](https://travis-ci.org/simonster/PiecewiseIncreasingRanges.jl.svg?branch=master)](https://travis-ci.org/simonster/PiecewiseIncreasingRanges.jl)
-[![Coverage Status](https://coveralls.io/repos/simonster/PiecewiseIncreasingRanges.jl/badge.png?branch=master)](https://coveralls.io/r/simonster/PiecewiseIncreasingRanges.jl?branch=master)
+[![Coverage Status](https://coveralls.io/repos/simonster/PiecewiseIncreasingRanges.jl/badge.svg?branch=master)](https://coveralls.io/r/simonster/PiecewiseIncreasingRanges.jl?branch=master)
 
 PiecewiseIncreasingRanges.jl provides a PiecewiseIncreasingRange type that corresponds to a set of concatenated, monotonically increasing ranges. It implements indexing as well as `searchsortedfirst`, `searchsortedlast`, and a `findnearest` function. This type is useful for holding the potentially discontinuous timestamps corresponding to large quantities of sampled data, where creating and indexing a vector would be undesirably slow.
 
