@@ -1,13 +1,13 @@
 language: julia
 os:
   - linux
-  - osx
 julia:
   - release
   - nightly
 notifications:
   email: false
-# uncomment the following lines to override the default test script
-#script:
-#  - if [[ -a .git/shallow ]]; then git fetch --unshallow; fi
-#  - julia --check-bounds=yes -e 'Pkg.clone(pwd()); Pkg.build("PiecewiseIncreasingRanges"); Pkg.test("PiecewiseIncreasingRanges"; coverage=true)'
+script:
+  - if [[ -a .git/shallow ]]; then git fetch --unshallow; fi
+  - julia --check-bounds=yes -e 'Pkg.clone(pwd()); Pkg.build("PiecewiseIncreasingRanges"); Pkg.test("PiecewiseIncreasingRanges"; coverage=true)'
+after_success:
+  - if [ $TRAVIS_JULIA_VERSION = "nightly" ]; then julia -e 'cd(Pkg.dir("PiecewiseIncreasingRanges")); Pkg.add("Coverage"); using Coverage; Coveralls.submit(Coveralls.process_folder())'; fi
