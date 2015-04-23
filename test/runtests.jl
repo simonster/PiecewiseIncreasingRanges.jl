@@ -38,3 +38,5 @@ rg = PiecewiseIncreasingRange(StepRange{Rational{Int},Rational{Int}}[])
 @test searchsortedfirst(rg, 1) == 1
 @test searchsortedlast(rg, 1) == 1
 @test_throws NoNearestSampleError findnearest(rg, 1)
+
+@test_throws ArgumentError PiecewiseIncreasingRange(StepRange{Rational{Int},Rational{Int}}[0:1//2:1, 3//4:1//2:4])

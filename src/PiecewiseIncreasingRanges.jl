@@ -77,7 +77,6 @@ function Base.searchsortedlast(r::PiecewiseIncreasingRange, x)
 end
 
 immutable NoNearestSampleError <: Exception end
-show(io::IO, ::NoNearestSampleError) = write(io, "no sample found within half step")
 
 function findnearest(r::PiecewiseIncreasingRange, x, within_half_step::Bool=false)
     isempty(r.ranges) && throw(NoNearestSampleError())
