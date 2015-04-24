@@ -10,10 +10,28 @@ PiecewiseIncreasingRanges.jl provides a PiecewiseIncreasingRange type that corre
 You can construct a PiecewiseIncreasingRange as below:
 
 ```julia
-PiecewiseIncreasingRange(StepRange{Rational{Int}, Rational{Int}}[0:1//20000:1, 5:1//20000:6])
+julia> PiecewiseIncreasingRange(StepRange{Int,Int}[0:5:15, 18:2:20])
+6-element PiecewiseIncreasingRanges.PiecewiseIncreasingRange{Int64,StepRange{Int64,Int64},Void}:
+  0
+  5
+ 10
+ 15
+ 18
+ 20
 ```
 
-At present, only StepRanges are supported.
+PiecewiseIncreasingRanges also accept an optional divisor, which is divided out of all elements:
+
+```julia
+julia> PiecewiseIncreasingRange(UnitRange{Int}[0:3, 15:16], 4)
+6-element PiecewiseIncreasingRanges.PiecewiseIncreasingRange{Float64,UnitRange{Int64},Int64}:
+ 0.0 
+ 0.25
+ 0.5 
+ 0.75
+ 3.75
+ 4.0
+```
 
 ## findnearest
 
