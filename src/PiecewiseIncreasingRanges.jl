@@ -3,48 +3,89 @@ export PiecewiseIncreasingRange, NoNearestSampleError, findnearest
 
 using Base.Order
 
-immutable PiecewiseIncreasingRange{T} <: AbstractVector{T}
-    ranges::Vector{StepRange{T,T}}
-    offsets::Vector{Int}
+function combine_ranges{R<:Range}(ranges::Vector{R}, firstrg::R, firstrgidx::Int)
+    newranges = R[]
+    offsets = Int[1]
 
-    function PiecewiseIncreasingRange(ranges::Vector{StepRange{T,T}})
-        isempty(ranges) && return new(ranges, Int[])
-        newranges = Range{T}[]
-        offsets = Int[1]
+    step(firstrg) < 0 && throw(ArgumentError("ranges must be strictly monotonically increasing"))
+    currg = firstrg
 
-        # Find first non-empty range
-        currg = ranges[1]
-        for i = 1:length(ranges)
-            currg = ranges[i]
-            !isempty(currg) && break
-        end
-        isempty(currg) && return PiecewiseIncreasingRange(newranges, offsets)
-        step(currg) < 0 && throw(ArgumentError("ranges must be strictly monotonically increasing"))
+    for i = firstrgidx:length(ranges)
+        newrg = ranges[i]
+        isempty(newrg) && continue
 
-        for i = 2:length(ranges)
-            newrg = ranges[i]
-            isempty(newrg) && continue
-
+        if step(newrg) == step(currg) && first(newrg) == last(currg)+step(currg)
+            # Can extend current range
+            currg = first(currg):step(currg):last(newrg)
+        else
             if first(newrg) <= last(currg) || step(newrg) < 0
                 throw(ArgumentError("ranges must be strictly monotonically increasing"))
             end
 
-            if step(newrg) == step(currg) && first(newrg) == last(currg)+step(currg)
-                # Can extend current range
-                currg = first(currg):step(currg):last(newrg)
-            else
-                # Need to make a new range
-                push!(newranges, currg)
-                push!(offsets, offsets[end]+length(currg))
-                currg = newrg
-            end
+            # Need to make a new range
+            push!(newranges, currg)
+            push!(offsets, offsets[end]+length(currg))
+            currg = newrg
         end
-        push!(newranges, currg)
+    end
 
-        new(newranges, offsets)
+    push!(newranges, currg)
+    (newranges, offsets)
+end
+
+function combine_ranges{R<:FloatRange}(ranges::Vector{R}, firstrg::R, firstrgidx::Int)
+    newranges = R[]
+    offsets = Int[1]
+
+    if signbit(firstrg.step) != signbit(firstrg.divisor)
+        throw(ArgumentError("ranges must be strictly monotonically increasing"))
+    end
+    currg = firstrg
+
+    for i = firstrgidx:length(ranges)
+        newrg = ranges[i]
+        isempty(newrg) && continue
+
+        if step(newrg) == step(currg) && newrg.start*currg.divisor == (currg.start+currg.step*currg.len)*newrg.divisor
+            currg = FloatRange(currg.start, currg.step, currg.len + newrg.len, currg.divisor)
+        else
+            if first(newrg) <= last(currg) || signbit(currg.step) != signbit(currg.divisor)
+                throw(ArgumentError("ranges must be strictly monotonically increasing"))
+            end
+
+            # Need to make a new range
+            push!(newranges, currg)
+            push!(offsets, offsets[end]+length(currg))
+            currg = newrg
+        end
+    end
+
+    push!(newranges, currg)
+    (newranges, offsets)
+end
+
+immutable PiecewiseIncreasingRange{T,R<:Range} <: AbstractVector{T}
+    ranges::Vector{R}
+    offsets::Vector{Int}
+    divisor::T
+
+    function PiecewiseIncreasingRange(ranges::Vector{R}, divisor)
+        isempty(ranges) && return new(ranges, Int[])
+
+        # Find first non-empty range
+        firstrg = ranges[1]
+        j = 0
+        for j = 1:length(ranges)
+            firstrg = ranges[j]
+            !isempty(firstrg) && break
+        end
+        isempty(firstrg) && return PiecewiseIncreasingRange(newranges, offsets)
+
+        newranges, offsets = combine_ranges(ranges, firstrg, j+1)
+        new(newranges, offsets, divisor)
     end
 end
-PiecewiseIncreasingRange{T}(ranges::Vector{StepRange{T,T}}) = PiecewiseIncreasingRange{T}(ranges)
+PiecewiseIncreasingRange{R<:Range}(ranges::Vector{R}, divisor=1) = PiecewiseIncreasingRange{eltype(R),R}(ranges, divisor)
 
 function Base.size(r::PiecewiseIncreasingRange)
     isempty(r.ranges) && return 0
@@ -53,7 +94,7 @@ end
 
 function Base.getindex(r::PiecewiseIncreasingRange, i::Integer)
     rgidx = searchsortedlast(r.offsets, i, Forward)
-    r.ranges[rgidx][i-r.offsets[rgidx]+1]
+    r.ranges[rgidx][i-r.offsets[rgidx]+1]/r.divisor
 end
 
 # searchsortedfirst, searchsortedlast
@@ -64,34 +105,39 @@ Base.Order.lt(o::PiecewiseIncreasingRangeLastOrdering, a, b) = isless(last(a), l
 
 function Base.searchsortedfirst(r::PiecewiseIncreasingRange, x)
     isempty(r.ranges) && return 1
-    rgidx = searchsortedfirst(r.ranges, x, PiecewiseIncreasingRangeLastOrdering())
+    xd = x*r.divisor
+
+    rgidx = searchsortedfirst(r.ranges, xd, PiecewiseIncreasingRangeLastOrdering())
     rgidx > length(r.ranges) && return length(r) + 1
-    searchsortedfirst(r.ranges[rgidx], x, Forward) + r.offsets[rgidx] - 1
+    searchsortedfirst(r.ranges[rgidx], xd, Forward) + r.offsets[rgidx] - 1
 end
 
 function Base.searchsortedlast(r::PiecewiseIncreasingRange, x)
     isempty(r.ranges) && return 1
-    rgidx = searchsortedlast(r.ranges, x, PiecewiseIncreasingRangeFirstOrdering())
+    xd = x*r.divisor
+
+    rgidx = searchsortedlast(r.ranges, xd, PiecewiseIncreasingRangeFirstOrdering())
     rgidx == 0 && return 0
-    searchsortedlast(r.ranges[rgidx], x, Forward) + r.offsets[rgidx] - 1
+    searchsortedlast(r.ranges[rgidx], xd, Forward) + r.offsets[rgidx] - 1
 end
 
 immutable NoNearestSampleError <: Exception end
 
 function findnearest(r::PiecewiseIncreasingRange, x, within_half_step::Bool=false)
     isempty(r.ranges) && throw(NoNearestSampleError())
+    xd = x*r.divisor
 
-    rgidx = searchsortedfirst(r.ranges, x, PiecewiseIncreasingRangeLastOrdering())
+    rgidx = searchsortedfirst(r.ranges, xd, PiecewiseIncreasingRangeLastOrdering())
     if rgidx > length(r.ranges)
         rgend = r.ranges[end]
-        within_half_step && x > rgend[end]+step(rgend)/2 && throw(NoNearestSampleError())
+        within_half_step && xd > rgend[end]+step(rgend)/2 && throw(NoNearestSampleError())
         return length(r)
     end
 
     rg = r.ranges[rgidx]
-    idxinrg = searchsortedfirst(rg, x, Forward)
+    idxinrg = searchsortedfirst(rg, xd, Forward)
     idx = idxinrg + r.offsets[rgidx] - 1
-    d = rg[idxinrg] - x
+    d = rg[idxinrg] - xd
 
     if idxinrg == 1
         if rgidx == 1
@@ -102,7 +148,7 @@ function findnearest(r::PiecewiseIncreasingRange, x, within_half_step::Bool=fals
 
         # Could be closer to last element of preceding range
         rgprev = r.ranges[rgidx-1]
-        dprev = x - rgprev[end]
+        dprev = xd - rgprev[end]
         within_half_step && d > step(rg)/2 && dprev > step(rgprev)/2 && throw(NoNearestSampleError())
         return idx - (dprev <= d)
     end
