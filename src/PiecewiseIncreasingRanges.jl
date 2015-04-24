@@ -64,10 +64,10 @@ function combine_ranges{R<:FloatRange}(ranges::Vector{R}, firstrg::R, firstrgidx
     (newranges, offsets)
 end
 
-immutable PiecewiseIncreasingRange{T,R<:Range} <: AbstractVector{T}
+immutable PiecewiseIncreasingRange{T,R<:Range,S} <: AbstractVector{T}
     ranges::Vector{R}
     offsets::Vector{Int}
-    divisor::T
+    divisor::S
 
     function PiecewiseIncreasingRange(ranges::Vector{R}, divisor)
         isempty(ranges) && return new(ranges, Int[])
@@ -85,7 +85,14 @@ immutable PiecewiseIncreasingRange{T,R<:Range} <: AbstractVector{T}
         new(newranges, offsets, divisor)
     end
 end
-PiecewiseIncreasingRange{R<:Range}(ranges::Vector{R}, divisor=1) = PiecewiseIncreasingRange{eltype(R),R}(ranges, divisor)
+PiecewiseIncreasingRange{R<:Range}(ranges::Vector{R}, divisor) = PiecewiseIncreasingRange{typeof(inv(one(eltype(R)))),R,typeof(divisor)}(ranges, divisor)
+PiecewiseIncreasingRange{R<:Range}(ranges::Vector{R}) = PiecewiseIncreasingRange{eltype(R),R,Nothing}(ranges, nothing)
+
+# Avoid applying the divisor if it is one, to get types right
+divide_divisor{T,R}(r::PiecewiseIncreasingRange{T,R,Nothing}, x) = x
+multiply_divisor{T,R}(r::PiecewiseIncreasingRange{T,R,Nothing}, x) = x
+divide_divisor{T,R,S}(r::PiecewiseIncreasingRange{T,R,S}, x) = x/r.divisor
+multiply_divisor{T,R,S}(r::PiecewiseIncreasingRange{T,R,S}, x) = x*r.divisor
 
 function Base.size(r::PiecewiseIncreasingRange)
     isempty(r.ranges) && return 0
@@ -94,7 +101,7 @@ end
 
 function Base.getindex(r::PiecewiseIncreasingRange, i::Integer)
     rgidx = searchsortedlast(r.offsets, i, Forward)
-    r.ranges[rgidx][i-r.offsets[rgidx]+1]/r.divisor
+    divide_divisor(r, r.ranges[rgidx][i-r.offsets[rgidx]+1])
 end
 
 # searchsortedfirst, searchsortedlast
@@ -105,7 +112,7 @@ Base.Order.lt(o::PiecewiseIncreasingRangeLastOrdering, a, b) = isless(last(a), l
 
 function Base.searchsortedfirst(r::PiecewiseIncreasingRange, x)
     isempty(r.ranges) && return 1
-    xd = x*r.divisor
+    xd = multiply_divisor(r, x)
 
     rgidx = searchsortedfirst(r.ranges, xd, PiecewiseIncreasingRangeLastOrdering())
     rgidx > length(r.ranges) && return length(r) + 1
@@ -114,7 +121,7 @@ end
 
 function Base.searchsortedlast(r::PiecewiseIncreasingRange, x)
     isempty(r.ranges) && return 1
-    xd = x*r.divisor
+    xd = multiply_divisor(r, x)
 
     rgidx = searchsortedlast(r.ranges, xd, PiecewiseIncreasingRangeFirstOrdering())
     rgidx == 0 && return 0
@@ -125,7 +132,7 @@ immutable NoNearestSampleError <: Exception end
 
 function findnearest(r::PiecewiseIncreasingRange, x, within_half_step::Bool=false)
     isempty(r.ranges) && throw(NoNearestSampleError())
-    xd = x*r.divisor
+    xd = multiply_divisor(r, x)
 
     rgidx = searchsortedfirst(r.ranges, xd, PiecewiseIncreasingRangeLastOrdering())
     if rgidx > length(r.ranges)
