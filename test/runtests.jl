@@ -1,11 +1,12 @@
 using PiecewiseIncreasingRanges
 using Base.Test
 
-function test(rgs, divisor)
+function test(rgs, divisor...)
 	vcrgs = vcat(rgs...)
-	rg = PiecewiseIncreasingRange(rgs, divisor)
+	!isempty(divisor) && (vcrgs /= divisor[1])
+	rg = PiecewiseIncreasingRange(rgs, divisor...)
 	@test length(rg.ranges) == 4
-	@test vcrgs/divisor == rg
+	@test vcrgs == rg
 
 	for i = 1:length(rg)
 		@test searchsortedfirst(rg, rg[i]) == i
@@ -34,8 +35,8 @@ function test(rgs, divisor)
 	@test_throws NoNearestSampleError findnearest(rg, 19, true)
 end
 
-test(StepRange{Rational{Int},Rational{Int}}[0:1//2:5, 5+1//8:1//8:10, 10+1//4:1//4:14, 14+1//4:1//4:15, 17:1//2:18], 1)
-test(FloatRange{Float64}[0:1//2:5., 5+1//8:1//8:10., 10+1//4:1//4:14., 14+1//4:1//4:15., 17:1//2:18.], 1)
+test(StepRange{Rational{Int},Rational{Int}}[0:1//2:5, 5+1//8:1//8:10, 10+1//4:1//4:14, 14+1//4:1//4:15, 17:1//2:18])
+test(FloatRange{Float64}[0:1//2:5., 5+1//8:1//8:10., 10+1//4:1//4:14., 14+1//4:1//4:15., 17:1//2:18.])
 test(StepRange{Int,Int}[0:4:40, 41:1:80, 82:2:112, 114:2:120, 136:4:144], 8)
 
 # Empty test
