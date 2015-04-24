@@ -79,7 +79,7 @@ immutable PiecewiseIncreasingRange{T,R<:Range,S} <: AbstractVector{T}
             firstrg = ranges[j]
             !isempty(firstrg) && break
         end
-        isempty(firstrg) && return PiecewiseIncreasingRange(R[], Int[])
+        isempty(firstrg) && return new(R[], Int[], divisor)
 
         newranges, offsets = combine_ranges(ranges, firstrg, j+1)
         new(newranges, offsets, divisor)
