@@ -43,8 +43,16 @@ rg = PiecewiseIncreasingRange(StepRange{Rational{Int},Rational{Int}}[])
 @test searchsortedfirst(rg, 1) == 1
 @test searchsortedlast(rg, 1) == 1
 @test_throws NoNearestSampleError findnearest(rg, 1)
+rg = PiecewiseIncreasingRange(UnitRange{Int}[0:-1])
+@test isempty(rg)
 
+# Test with non-monotonic range
 @test_throws ArgumentError PiecewiseIncreasingRange(StepRange{Rational{Int},Rational{Int}}[0:1//2:1, 3//4:1//2:4])
+@test_throws ArgumentError PiecewiseIncreasingRange(StepRange{Rational{Int},Rational{Int}}[0:-1//2:-1, 10:1//2:8])
+@test_throws ArgumentError PiecewiseIncreasingRange(StepRange{Rational{Int},Rational{Int}}[0:1//2:1, 10:-1//2:8])
+@test_throws ArgumentError PiecewiseIncreasingRange(FloatRange{Float64}[0:0.5:1, 0.75:0.5:4])
+@test_throws ArgumentError PiecewiseIncreasingRange(FloatRange{Float64}[0:-0.5:-1, 10:0.5:8])
+@test_throws ArgumentError PiecewiseIncreasingRange(FloatRange{Float64}[0:0.5:1, 10:-0.5:8])
 
 # Test with empty ranges interspersed with non-empty ranges
 rg = PiecewiseIncreasingRange(UnitRange{Int}[0:-1, 1:0, 0:-1, 1:3, 0:-1, 5:10])

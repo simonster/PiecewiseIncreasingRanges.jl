@@ -49,7 +49,7 @@ function combine_ranges{R<:FloatRange}(ranges::Vector{R}, firstrg::R, firstrgidx
         if step(newrg) == step(currg) && newrg.start*currg.divisor == (currg.start+currg.step*currg.len)*newrg.divisor
             currg = FloatRange(currg.start, currg.step, currg.len + newrg.len, currg.divisor)
         else
-            if first(newrg) <= last(currg) || signbit(currg.step) != signbit(currg.divisor)
+            if first(newrg) <= last(currg) || signbit(newrg.step) != signbit(newrg.divisor)
                 throw(ArgumentError("ranges must be strictly monotonically increasing"))
             end
 
@@ -79,7 +79,7 @@ immutable PiecewiseIncreasingRange{T,R<:Range} <: AbstractVector{T}
             firstrg = ranges[j]
             !isempty(firstrg) && break
         end
-        isempty(firstrg) && return PiecewiseIncreasingRange(newranges, offsets)
+        isempty(firstrg) && return PiecewiseIncreasingRange(R[], Int[])
 
         newranges, offsets = combine_ranges(ranges, firstrg, j+1)
         new(newranges, offsets, divisor)
