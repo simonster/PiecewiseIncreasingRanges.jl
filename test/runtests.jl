@@ -23,6 +23,13 @@ function test(rgs, divisor...)
 			@test findnearest(rg, rg[i]-1//17, within_half_sample) == i
 			@test findnearest(rg, rg[i]+1//17, within_half_sample) == i
 		end
+
+		for j = i:length(rg)
+			@test vcrgs[i:j] == rg[i:j]
+			for k = 1:i-j+1
+				@test vcrgs[i:k:j] == rg[i:k:j]
+			end
+		end
 	end
 
 	@test findnearest(rg, -1) == 1

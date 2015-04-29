@@ -104,6 +104,24 @@ function Base.getindex(r::PiecewiseIncreasingRange, i::Integer)
     divide_divisor(r, r.ranges[rgidx][i-r.offsets[rgidx]+1])
 end
 
+function Base.getindex{T,R,S}(r::PiecewiseIncreasingRange{T,R,S}, x::Range{Int})
+    isempty(x) && return PiecewiseIncreasingRange{T,R,S}(R[], Int[], r.divisor)
+    (first(x) >= 1 && last(x) <= length(r)) || throw(BoundsError())
+
+    # Not type-stable!
+    step(x) < 0 && return invoke(getindex, (typeof(r), AbstractVector{Int}), r, x)
+
+    firstrgidx = searchsortedlast(r.offsets, first(x), Forward)
+    lastrgidx = searchsortedlast(r.offsets, last(x), Forward)
+    newrgs = Array(R, lastrgidx-firstrgidx+1)
+    for irange = firstrgidx:lastrgidx
+        elmax = min(last(x)-r.offsets[irange]+1, length(r.ranges[irange]))
+        newrg = newrgs[irange-firstrgidx+1] = r.ranges[irange][first(x)-r.offsets[irange]+1:elmax]
+        x = x[length(newrg)+1:end]
+    end
+    PiecewiseIncreasingRange(newrgs, r.divisor)
+end
+
 # searchsortedfirst, searchsortedlast
 immutable PiecewiseIncreasingRangeFirstOrdering <: Ordering end
 Base.Order.lt(o::PiecewiseIncreasingRangeFirstOrdering, a, b) = isless(first(a), first(b))
