@@ -1,5 +1,5 @@
 module PiecewiseIncreasingRanges
-export PiecewiseIncreasingRange, NoNearestSampleError, findnearest
+export PiecewiseIncreasingRange, NoNearestSampleError, findnearest, resample
 
 using Base.Order
 
@@ -120,6 +120,35 @@ function Base.getindex{T,R,S}(r::PiecewiseIncreasingRange{T,R,S}, x::Range{Int})
         x = x[length(newrg)+1:end]
     end
     PiecewiseIncreasingRange(newrgs, r.divisor)
+end
+
+function resample{T,R,S}(r::PiecewiseIncreasingRange{T,R,S}, ratio::Rational{Int})
+    excess = zero(eltype(R))
+    curpt = 0
+    newrgs = R[]
+    for i = 1:length(r.ranges)
+        endpt = last(r.ranges[i])*num(ratio)
+        newrg = first(r.ranges[i])*num(ratio)+excess*step(r.ranges[i]):step(r.ranges[i])*den(ratio):endpt
+        curpt += length(newrg)
+        push!(newrgs, newrg)
+        if i != length(r.ranges)
+            # Need to linearly interpolate between endpoint and next range
+            # nextind is the next index in r (= 1 + curpt/ratio) times num(ratio)
+            nextind = num(ratio) + curpt*den(ratio)
+            if nextind < r.offsets[i+1]*num(ratio)
+                # Need to interpolate between this point and the next
+                weight = mod(nextind, num(ratio))
+                interpt = last(r.ranges[i])*(num(ratio)-weight) + first(r.ranges[i+1])*weight
+                interpstep = (first(r.ranges[i+1]) - last(r.ranges[i]))*den(ratio)
+                newrg = interpt:interpstep:first(r.ranges[i+1])*num(ratio)
+                push!(newrgs, newrg)
+                curpt += length(newrg)
+                nextind += length(newrg)*den(ratio)
+            end
+            excess = nextind - r.offsets[i+1]*num(ratio)
+        end
+    end
+    PiecewiseIncreasingRange(newrgs, multiply_divisor(r, num(ratio)))
 end
 
 # searchsortedfirst, searchsortedlast
