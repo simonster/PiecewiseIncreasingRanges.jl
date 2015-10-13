@@ -1,7 +1,7 @@
 module PiecewiseIncreasingRanges
 export PiecewiseIncreasingRange, NoNearestSampleError, findnearest, resample
 
-using Base.Order
+using Compat, Base.Order
 
 function combine_ranges{R<:Range}(ranges::Vector{R}, firstrg::R, firstrgidx::Int)
     newranges = R[]
@@ -86,11 +86,11 @@ immutable PiecewiseIncreasingRange{T,R<:Range,S} <: AbstractVector{T}
     end
 end
 PiecewiseIncreasingRange{R<:Range}(ranges::Vector{R}, divisor) = PiecewiseIncreasingRange{typeof(inv(one(eltype(R)))),R,typeof(divisor)}(ranges, divisor)
-PiecewiseIncreasingRange{R<:Range}(ranges::Vector{R}) = PiecewiseIncreasingRange{eltype(R),R,Nothing}(ranges, nothing)
+PiecewiseIncreasingRange{R<:Range}(ranges::Vector{R}) = PiecewiseIncreasingRange{eltype(R),R,@compat(Void)}(ranges, nothing)
 
 # Avoid applying the divisor if it is one, to get types right
-divide_divisor{T,R}(r::PiecewiseIncreasingRange{T,R,Nothing}, x) = x
-multiply_divisor{T,R}(r::PiecewiseIncreasingRange{T,R,Nothing}, x) = x
+divide_divisor{T,R}(r::PiecewiseIncreasingRange{T,R,@compat(Void)}, x) = x
+multiply_divisor{T,R}(r::PiecewiseIncreasingRange{T,R,@compat(Void)}, x) = x
 divide_divisor{T,R,S}(r::PiecewiseIncreasingRange{T,R,S}, x) = x/r.divisor
 multiply_divisor{T,R,S}(r::PiecewiseIncreasingRange{T,R,S}, x) = x*r.divisor
 
