@@ -3,33 +3,42 @@ export PiecewiseIncreasingRange, NoNearestSampleError, findnearest, resample
 
 using Compat, Base.Order
 
+constructrange{T<:UnitRange}(::Type{T}, start, step, stop) = T(start, stop)
+constructrange{T<:StepRange}(::Type{T}, start, step, stop) = T(start, step, stop)
+
 function combine_ranges{R<:Range}(ranges::Vector{R}, firstrg::R, firstrgidx::Int)
     newranges = R[]
     offsets = Int[1]
 
     step(firstrg) < 0 && throw(ArgumentError("ranges must be strictly monotonically increasing"))
-    currg = firstrg
+    curstart = first(firstrg)
+    curstop = last(firstrg)
+    curstep = step(firstrg)
 
     for i = firstrgidx:length(ranges)
         newrg = ranges[i]
         isempty(newrg) && continue
 
-        if step(newrg) == step(currg) && first(newrg) == last(currg)+step(currg)
+        if step(newrg) == curstep && first(newrg) == curstop+curstep
             # Can extend current range
-            currg = first(currg):step(currg):last(newrg)
+            curstop = last(newrg)
         else
-            if first(newrg) <= last(currg) || step(newrg) < 0
+            if first(newrg) <= curstop || step(newrg) < 0
                 throw(ArgumentError("ranges must be strictly monotonically increasing"))
             end
 
             # Need to make a new range
+            currg = constructrange(R, curstart, curstep, curstop)
             push!(newranges, currg)
             push!(offsets, offsets[end]+length(currg))
-            currg = newrg
+
+            curstart = first(newrg)
+            curstop = last(newrg)
+            curstep = step(newrg)
         end
     end
 
-    push!(newranges, currg)
+    push!(newranges, constructrange(R, curstart, curstep, curstop))
     (newranges, offsets)
 end
 
@@ -69,7 +78,8 @@ immutable PiecewiseIncreasingRange{T,R<:Range,S} <: AbstractVector{T}
     offsets::Vector{Int}
     divisor::S
 
-    function PiecewiseIncreasingRange(ranges::Vector{R}, divisor)
+    function PiecewiseIncreasingRange(ranges::AbstractVector, divisor)
+        ranges = convert(Vector{R}, ranges)
         isempty(ranges) && return new(ranges, Int[])
 
         # Find first non-empty range
@@ -88,6 +98,10 @@ end
 PiecewiseIncreasingRange{R<:Range}(ranges::Vector{R}, divisor) = PiecewiseIncreasingRange{typeof(inv(one(eltype(R)))),R,typeof(divisor)}(ranges, divisor)
 PiecewiseIncreasingRange{R<:Range}(ranges::Vector{R}) = PiecewiseIncreasingRange{eltype(R),R,@compat(Void)}(ranges, nothing)
 
+Base.convert{T,R<:Range,S}(::Type{PiecewiseIncreasingRange{T,R,S}}, x::PiecewiseIncreasingRange{T,R,S}) = x
+Base.convert{T,R,S}(::Type{PiecewiseIncreasingRange{T,R,S}}, x::PiecewiseIncreasingRange) =
+    PiecewiseIncreasingRange{T,R,S}(x.ranges, x.divisor)
+
 # Avoid applying the divisor if it is one, to get types right
 divide_divisor{T,R}(r::PiecewiseIncreasingRange{T,R,@compat(Void)}, x) = x
 multiply_divisor{T,R}(r::PiecewiseIncreasingRange{T,R,@compat(Void)}, x) = x
@@ -95,7 +109,7 @@ divide_divisor{T,R,S}(r::PiecewiseIncreasingRange{T,R,S}, x) = x/r.divisor
 multiply_divisor{T,R,S}(r::PiecewiseIncreasingRange{T,R,S}, x) = x*r.divisor
 
 function Base.size(r::PiecewiseIncreasingRange)
-    isempty(r.ranges) && return 0
+    isempty(r.ranges) && return (0,)
     return (r.offsets[end]+length(r.ranges[end])-1,)
 end
 
