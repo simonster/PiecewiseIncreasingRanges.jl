@@ -1,12 +1,14 @@
+__precompile__(false)
 module PiecewiseIncreasingRanges
 export PiecewiseIncreasingRange, NoNearestSampleError, findnearest, resample
 
-using Compat, Base.Order
+using Base.Order
 
-constructrange{T<:UnitRange}(::Type{T}, start, step, stop) = T(start, stop)
-constructrange{T<:StepRange}(::Type{T}, start, step, stop) = T(start, step, stop)
+constructrange(::Type{T}, start, step, stop) where T<:AbstractUnitRange = T(start, stop)
+constructrange(::Type{T}, start, step, stop) where T<:StepRange = T(start, step, stop)
+constructrange(::Type{T}, start, step, stop) where T<:StepRangeLen = start:step:stop
 
-function combine_ranges{R<:Range}(ranges::Vector{R}, firstrg::R, firstrgidx::Int)
+function combine_ranges(ranges::Vector{R}, firstrg::R, firstrgidx::Int) where R<:AbstractRange
     newranges = R[]
     offsets = Int[1]
 
@@ -42,71 +44,45 @@ function combine_ranges{R<:Range}(ranges::Vector{R}, firstrg::R, firstrgidx::Int
     (newranges, offsets)
 end
 
-function combine_ranges{R<:FloatRange}(ranges::Vector{R}, firstrg::R, firstrgidx::Int)
-    newranges = R[]
-    offsets = Int[1]
-
-    if signbit(firstrg.step) != signbit(firstrg.divisor)
-        throw(ArgumentError("ranges must be strictly monotonically increasing"))
-    end
-    currg = firstrg
-
-    for i = firstrgidx:length(ranges)
-        newrg = ranges[i]
-        isempty(newrg) && continue
-
-        if step(newrg) == step(currg) && newrg.start*currg.divisor == (currg.start+currg.step*currg.len)*newrg.divisor
-            currg = FloatRange(currg.start, currg.step, currg.len + newrg.len, currg.divisor)
-        else
-            if first(newrg) <= last(currg) || signbit(newrg.step) != signbit(newrg.divisor)
-                throw(ArgumentError("ranges must be strictly monotonically increasing"))
-            end
-
-            # Need to make a new range
-            push!(newranges, currg)
-            push!(offsets, offsets[end]+length(currg))
-            currg = newrg
-        end
-    end
-
-    push!(newranges, currg)
-    (newranges, offsets)
-end
-
-immutable PiecewiseIncreasingRange{T,R<:Range,S} <: AbstractVector{T}
+struct PiecewiseIncreasingRange{T,R<:AbstractRange,S} <: AbstractVector{T}
     ranges::Vector{R}
     offsets::Vector{Int}
     divisor::S
 
-    function PiecewiseIncreasingRange(ranges::AbstractVector, divisor)
+    function PiecewiseIncreasingRange(ranges::Vector{R}, divisor) where R<:AbstractRange
         ranges = convert(Vector{R}, ranges)
-        isempty(ranges) && return new(ranges, Int[])
-
-        # Find first non-empty range
-        firstrg = ranges[1]
-        j = 0
-        for j = 1:length(ranges)
-            firstrg = ranges[j]
-            !isempty(firstrg) && break
+        if isempty(ranges)
+            offsets = Int[]
+        else
+            # Find first non-empty range
+            firstrg = ranges[1]
+            j = 1
+            while j <= length(ranges)
+                firstrg = ranges[j]
+                j += 1
+                !isempty(firstrg) && break
+            end
+            if isempty(firstrg)
+                ranges = R[]
+                offsets = Int[]
+            else
+                ranges, offsets = combine_ranges(ranges, firstrg, j)
+            end
         end
-        isempty(firstrg) && return new(R[], Int[], divisor)
-
-        newranges, offsets = combine_ranges(ranges, firstrg, j+1)
-        new(newranges, offsets, divisor)
+        new{eltype(R),R,typeof(divisor)}(ranges, offsets, divisor)
     end
 end
-PiecewiseIncreasingRange{R<:Range}(ranges::Vector{R}, divisor) = PiecewiseIncreasingRange{typeof(inv(one(eltype(R)))),R,typeof(divisor)}(ranges, divisor)
-PiecewiseIncreasingRange{R<:Range}(ranges::Vector{R}) = PiecewiseIncreasingRange{eltype(R),R,@compat(Void)}(ranges, nothing)
+PiecewiseIncreasingRange(ranges::Vector{R}) where R<:AbstractRange = PiecewiseIncreasingRange(ranges, nothing)
 
-Base.convert{T,R<:Range,S}(::Type{PiecewiseIncreasingRange{T,R,S}}, x::PiecewiseIncreasingRange{T,R,S}) = x
-Base.convert{T,R,S}(::Type{PiecewiseIncreasingRange{T,R,S}}, x::PiecewiseIncreasingRange) =
+Base.convert(::Type{PiecewiseIncreasingRange{T,R,S}}, x::PiecewiseIncreasingRange{T,R,S}) where {T,R<:AbstractRange,S} = x
+Base.convert(::Type{PiecewiseIncreasingRange{T,R,S}}, x::PiecewiseIncreasingRange) where {T,R,S} =
     PiecewiseIncreasingRange{T,R,S}(x.ranges, x.divisor)
 
 # Avoid applying the divisor if it is one, to get types right
-divide_divisor{T,R}(r::PiecewiseIncreasingRange{T,R,@compat(Void)}, x) = x
-multiply_divisor{T,R}(r::PiecewiseIncreasingRange{T,R,@compat(Void)}, x) = x
-divide_divisor{T,R,S}(r::PiecewiseIncreasingRange{T,R,S}, x) = x/r.divisor
-multiply_divisor{T,R,S}(r::PiecewiseIncreasingRange{T,R,S}, x) = x*r.divisor
+divide_divisor(r::PiecewiseIncreasingRange{T,R,Nothing}, x) where {T,R} = x
+multiply_divisor(r::PiecewiseIncreasingRange{T,R,Nothing}, x) where {T,R} = x
+divide_divisor(r::PiecewiseIncreasingRange{T,R,S}, x) where {T,R,S} = x/r.divisor
+multiply_divisor(r::PiecewiseIncreasingRange{T,R,S}, x) where {T,R,S} = x*r.divisor
 
 function Base.size(r::PiecewiseIncreasingRange)
     isempty(r.ranges) && return (0,)
@@ -118,7 +94,7 @@ function Base.getindex(r::PiecewiseIncreasingRange, i::Integer)
     divide_divisor(r, r.ranges[rgidx][i-r.offsets[rgidx]+1])
 end
 
-function Base.getindex{T,R,S}(r::PiecewiseIncreasingRange{T,R,S}, x::Range{Int})
+function Base.getindex(r::PiecewiseIncreasingRange{T,R,S}, x::AbstractRange{Int}) where {T,R,S}
     isempty(x) && return PiecewiseIncreasingRange{T,R,S}(R[], Int[], r.divisor)
     (first(x) >= 1 && last(x) <= length(r)) || throw(BoundsError())
 
@@ -127,7 +103,7 @@ function Base.getindex{T,R,S}(r::PiecewiseIncreasingRange{T,R,S}, x::Range{Int})
 
     firstrgidx = searchsortedlast(r.offsets, first(x), Forward)
     lastrgidx = searchsortedlast(r.offsets, last(x), Forward)
-    newrgs = Array(R, lastrgidx-firstrgidx+1)
+    newrgs = Array{R}(undef, lastrgidx-firstrgidx+1)
     for irange = firstrgidx:lastrgidx
         elmax = min(last(x)-r.offsets[irange]+1, length(r.ranges[irange]))
         newrg = newrgs[irange-firstrgidx+1] = r.ranges[irange][first(x)-r.offsets[irange]+1:elmax]
@@ -136,39 +112,39 @@ function Base.getindex{T,R,S}(r::PiecewiseIncreasingRange{T,R,S}, x::Range{Int})
     PiecewiseIncreasingRange(newrgs, r.divisor)
 end
 
-function resample{T,R,S}(r::PiecewiseIncreasingRange{T,R,S}, ratio::Rational{Int})
+function resample(r::PiecewiseIncreasingRange{T,R,S}, ratio::Rational{Int}) where {T,R,S}
     excess = zero(eltype(R))
     curpt = 0
     newrgs = R[]
     for i = 1:length(r.ranges)
-        endpt = last(r.ranges[i])*num(ratio)
-        newrg = first(r.ranges[i])*num(ratio)+excess*step(r.ranges[i]):step(r.ranges[i])*den(ratio):endpt
+        endpt = last(r.ranges[i])*numerator(ratio)
+        newrg = first(r.ranges[i])*numerator(ratio)+excess*step(r.ranges[i]):step(r.ranges[i])*denominator(ratio):endpt
         curpt += length(newrg)
         push!(newrgs, newrg)
         if i != length(r.ranges)
             # Need to linearly interpolate between endpoint and next range
-            # nextind is the next index in r (= 1 + curpt/ratio) times num(ratio)
-            nextind = num(ratio) + curpt*den(ratio)
-            if nextind < r.offsets[i+1]*num(ratio)
+            # nextind is the next index in r (= 1 + curpt/ratio) times numerator(ratio)
+            nextind = numerator(ratio) + curpt*denominator(ratio)
+            if nextind < r.offsets[i+1]*numerator(ratio)
                 # Need to interpolate between this point and the next
-                weight = mod(nextind, num(ratio))
-                interpt = last(r.ranges[i])*(num(ratio)-weight) + first(r.ranges[i+1])*weight
-                interpstep = (first(r.ranges[i+1]) - last(r.ranges[i]))*den(ratio)
-                newrg = interpt:interpstep:first(r.ranges[i+1])*num(ratio)
+                weight = mod(nextind, numerator(ratio))
+                interpt = last(r.ranges[i])*(numerator(ratio)-weight) + first(r.ranges[i+1])*weight
+                interpstep = (first(r.ranges[i+1]) - last(r.ranges[i]))*denominator(ratio)
+                newrg = interpt:interpstep:first(r.ranges[i+1])*numerator(ratio)
                 push!(newrgs, newrg)
                 curpt += length(newrg)
-                nextind += length(newrg)*den(ratio)
+                nextind += length(newrg)*denominator(ratio)
             end
-            excess = nextind - r.offsets[i+1]*num(ratio)
+            excess = nextind - r.offsets[i+1]*numerator(ratio)
         end
     end
-    PiecewiseIncreasingRange(newrgs, multiply_divisor(r, num(ratio)))
+    PiecewiseIncreasingRange(newrgs, multiply_divisor(r, numerator(ratio)))
 end
 
 # searchsortedfirst, searchsortedlast
-immutable PiecewiseIncreasingRangeFirstOrdering <: Ordering end
+struct PiecewiseIncreasingRangeFirstOrdering <: Ordering end
 Base.Order.lt(o::PiecewiseIncreasingRangeFirstOrdering, a, b) = isless(first(a), first(b))
-immutable PiecewiseIncreasingRangeLastOrdering <: Ordering end
+struct PiecewiseIncreasingRangeLastOrdering <: Ordering end
 Base.Order.lt(o::PiecewiseIncreasingRangeLastOrdering, a, b) = isless(last(a), last(b))
 
 function Base.searchsortedfirst(r::PiecewiseIncreasingRange, x)
@@ -189,7 +165,7 @@ function Base.searchsortedlast(r::PiecewiseIncreasingRange, x)
     searchsortedlast(r.ranges[rgidx], xd, Forward) + r.offsets[rgidx] - 1
 end
 
-immutable NoNearestSampleError <: Exception end
+struct NoNearestSampleError <: Exception end
 
 function findnearest(r::PiecewiseIncreasingRange, x, within_half_step::Bool=false)
     isempty(r.ranges) && throw(NoNearestSampleError())
