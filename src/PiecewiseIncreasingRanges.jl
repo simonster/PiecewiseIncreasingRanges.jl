@@ -1,4 +1,3 @@
-__precompile__(false)
 module PiecewiseIncreasingRanges
 export PiecewiseIncreasingRange, NoNearestSampleError, findnearest, resample
 
